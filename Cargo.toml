@@ -1,0 +1,22 @@
+[package]
+name = "buter"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["uselessgoddess <dodickgod@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/uselessgoddess/buter"
+homepage = "https://github.com/uselessgoddess/buter"
+description = """
+Fluid buffer as place for iterators
+"""
+categories = ["algorithms"]
+keywords = ["buffer", "iterator"]
+
+[dev-dependencies]
+criterion = "0.3.5"
+
+[[bench]]
+name = "collect"
+harness = false
