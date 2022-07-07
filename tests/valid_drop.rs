@@ -17,10 +17,11 @@ impl Drop for DropWaker {
 #[test]
 fn drop_count() {
     {
-        let mut buf = Buter::new();
-        buf.extend_one(DropWaker);
+        let buf = Buter::new();
+        let mut writer = buf.writer();
+        writer.extend_one(DropWaker);
 
-        buf.iter().for_each(|_| {});
+        writer.into_iter().for_each(|_| {});
     }
 
     unsafe {
@@ -31,9 +32,10 @@ fn drop_count() {
 #[test]
 fn drop_hard_type() {
     {
-        let mut buf = Buter::new();
-        buf.extend_one(String::new());
+        let buf = Buter::new();
+        let mut writer = buf.writer();
+        writer.extend_one(String::new());
 
-        buf.iter().for_each(|_| {});
+        writer.into_iter().for_each(|_| {});
     }
 }

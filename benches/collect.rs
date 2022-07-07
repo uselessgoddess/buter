@@ -48,9 +48,10 @@ fn vec_push_with_capacity(c: &mut Criterion) {
 fn buter(c: &mut Criterion) {
     struct Helper(pub Buter<usize>);
     impl Helper {
-        fn work(&mut self) -> impl Iterator<Item = usize> + '_ {
-            callback_work(|i| self.0.extend_one(i));
-            self.0.iter()
+        fn work(&self) -> impl Iterator<Item = usize> + '_ {
+            let mut writer = self.0.writer();
+            callback_work(|i| writer.extend_one(i));
+            writer.into_iter()
         }
     }
 
