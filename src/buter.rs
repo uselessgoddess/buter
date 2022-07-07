@@ -1,11 +1,8 @@
 use crossbeam_queue::ArrayQueue;
-use lock_api::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLockReadGuard, RwLockWriteGuard};
-use parking_lot::{RawRwLock, RwLock};
+use parking_lot::{Mutex, MutexGuard};
 use std::ptr;
 
 type Buf<T> = Vec<T>;
-type MappedRwLockRead<'a, T> = MappedRwLockReadGuard<'a, RawRwLock, T>;
-type MappedRwLockWrite<'a, T> = MappedRwLockWriteGuard<'a, RawRwLock, T>;
 
 struct Buffers<T>(Box<[Buf<T>]>);
 
@@ -15,51 +12,47 @@ unsafe fn leak_ref<'a, T>(t: &T) -> &'a mut T {
 
 impl<T> Buffers<T> {
     fn new(size: usize) -> Self {
-        Self((0..size + 1).map(|_| Buf::new()).collect())
+        Self((0..size).map(|_| Buf::new()).collect())
     }
 
     unsafe fn get_unchecked(&self, index: usize) -> &mut Buf<T> {
         leak_ref(&self.0[index])
     }
-
-    fn size(&self) -> usize {
-        self.0.len() - 1
-    }
-
-    fn guard_zone(&mut self) -> &mut Buf<T> {
-        &mut self.0[self.size()]
-    }
 }
 
 pub struct Buter<T> {
-    bufs: RwLock<Buffers<T>>,
+    bufs: Buffers<T>,
+    over: Mutex<Buf<T>>,
     queue: ArrayQueue<usize>,
 }
 
 impl<T: Unpin> Buter<T> {
-    const SIZE: usize = 32;
+    const DEFAULT_SIZE: usize = 16;
 
     pub fn new() -> Self {
-        let bufs = Buffers::new(Self::SIZE);
-        let queue = ArrayQueue::new(Self::SIZE);
-        for i in 0..Self::SIZE {
+        Self::with_capacity(Self::DEFAULT_SIZE)
+    }
+
+    pub fn with_capacity(cap: usize) -> Self {
+        let bufs = Buffers::new(cap);
+        let queue = ArrayQueue::new(cap);
+        for i in 0..cap {
             queue.push(i).unwrap();
         }
 
         Self {
-            bufs: RwLock::new(bufs),
+            bufs,
+            over: Mutex::new(Buf::new()),
             queue,
         }
     }
 
-    unsafe fn leak_buf(&self, place: usize) -> MappedRwLockRead<'_, Buf<T>> {
-        let bufs = self.bufs.read();
-        RwLockReadGuard::map(bufs, |bufs| bufs.get_unchecked(place))
+    unsafe fn leak_buf(&self, place: usize) -> &mut Buf<T> {
+        self.bufs.get_unchecked(place)
     }
 
-    fn safe_leak_buf(&self) -> MappedRwLockWrite<'_, Buf<T>> {
-        let bufs = self.bufs.write();
-        RwLockWriteGuard::map(bufs, |bufs| bufs.guard_zone())
+    fn safe_leak_buf(&self) -> MutexGuard<'_, Buf<T>> {
+        self.over.lock()
     }
 
     pub fn writer(&self) -> ButterWriter<'_, T> {
@@ -89,23 +82,21 @@ pub struct QueRef<'a> {
 }
 
 pub enum BufRef<'a, T> {
-    Free(MappedRwLockRead<'a, Buf<T>>),
-    Lock(MappedRwLockWrite<'a, Buf<T>>),
+    Free(&'a mut Buf<T>),
+    Lock(MutexGuard<'a, Buf<T>>),
 }
 
 impl<'a, T> BufRef<'a, T> {
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        unsafe {
-            match self {
-                BufRef::Free(buf) => leak_ref(&**buf).get_mut(index),
-                BufRef::Lock(buf) => buf.get_mut(index),
-            }
+        match self {
+            BufRef::Free(buf) => buf.get_mut(index),
+            BufRef::Lock(buf) => buf.get_mut(index),
         }
     }
 
     pub unsafe fn set_len(&mut self, len: usize) {
         match self {
-            BufRef::Free(buf) => leak_ref(&**buf).set_len(len),
+            BufRef::Free(buf) => buf.set_len(len),
             BufRef::Lock(buf) => buf.set_len(len),
         }
     }
@@ -128,9 +119,9 @@ impl<'a, T: Unpin> IntoIterator for ButterWriter<'a, T> {
 impl<'a, T> Extend<T> for ButterWriter<'a, T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         match self.buf {
-            BufRef::Free(ref mut buf) => unsafe {
-                leak_ref(&**buf).extend(iter);
-            },
+            BufRef::Free(ref mut buf) => {
+                buf.extend(iter);
+            }
             BufRef::Lock(ref mut buf) => {
                 buf.extend(iter);
             }
