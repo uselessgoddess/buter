@@ -1,22 +1,19 @@
+use crate::SyncUnsafeCell;
 use crossbeam_queue::ArrayQueue;
 use parking_lot::{Mutex, MutexGuard};
 use std::ptr;
 
 type Buf<T> = Vec<T>;
 
-struct Buffers<T>(Box<[Buf<T>]>);
-
-unsafe fn leak_ref<'a, T>(t: &T) -> &'a mut T {
-    &mut *(t as *const T as *mut T)
-}
+struct Buffers<T>(Box<[SyncUnsafeCell<Buf<T>>]>);
 
 impl<T> Buffers<T> {
     fn new(size: usize) -> Self {
-        Self((0..size).map(|_| Buf::new()).collect())
+        Self((0..size).map(|_| SyncUnsafeCell::new(Buf::new())).collect())
     }
 
-    unsafe fn get_unchecked(&self, index: usize) -> &mut Buf<T> {
-        leak_ref(&self.0[index])
+    unsafe fn get_unchecked(&self, index: usize) -> *mut Buf<T> {
+        self.0.get_unchecked(index).get()
     }
 }
 
@@ -48,7 +45,7 @@ impl<T: Unpin> Buter<T> {
     }
 
     unsafe fn leak_buf(&self, place: usize) -> &mut Buf<T> {
-        self.bufs.get_unchecked(place)
+        &mut *self.bufs.get_unchecked(place)
     }
 
     fn safe_leak_buf(&self) -> MutexGuard<'_, Buf<T>> {

@@ -39,7 +39,7 @@ This is appropriate both with large results and with small ones
 // test vec_push_with_capacity ... bench:          54 ns/iter (+/- 32)
 ```
 ```rust
-// buter                   time:   [2.7939 ms 2.8248 ms 2.8551 ms]
-// vec_push                time:   [7.2415 ms 7.3449 ms 7.4483 ms]
-// vec_push_with_capacity  time:   [4.3433 ms 4.3965 ms 4.4500 ms]
+// buter                   time:   [1.6348 ms 1.6445 ms 1.6549 ms]
+// vec_push                time:   [4.4204 ms 4.4750 ms 4.5360 ms]
+// vec_push_with_capacity  time:   [2.6034 ms 2.6338 ms 2.6680 ms]
 ```
