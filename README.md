@@ -7,8 +7,8 @@ solution.
 
 ```rust
 fn callback_work<F>(mut f: F)
-    where
-        F: FnMut(usize),
+where
+    F: FnMut(usize),
 {
     for i in 0..10_000 {
         f(i);
@@ -23,7 +23,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn work_impl(&self) -> impl Iterator<Item=usize> + '_ {
+    fn work(&self) -> impl Iterator<Item = usize> + '_ {
         let mut writer = self.buf.writer();
         callback_work(|i| writer.extend(Some(i)));
         writer.into_iter()
@@ -34,9 +34,9 @@ impl Worker {
 ### Benches
 This is appropriate both with large results and with small ones
 ```rust
-// test buter                  ... bench:          14 ns/iter (+/- 5)
-// test vec_push               ... bench:         212 ns/iter (+/- 130)
-// test vec_push_with_capacity ... bench:          54 ns/iter (+/- 32)
+// test buter                  ... bench:    14 ns/iter (+/- 5)
+// test vec_push               ... bench:   212 ns/iter (+/- 130)
+// test vec_push_with_capacity ... bench:    54 ns/iter (+/- 32)
 ```
 ```rust
 // buter                   time:   [1.6348 ms 1.6445 ms 1.6549 ms]
