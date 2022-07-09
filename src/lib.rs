@@ -5,4 +5,4 @@ mod cell;
 
 pub(crate) use cell::SyncUnsafeCell;
 
-pub use self::buter::{Buter, ButerIter};
+pub use self::buter::{Buter, ButerIter, ButerWriter};

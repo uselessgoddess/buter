@@ -1,6 +1,6 @@
 use crate::SyncUnsafeCell;
 use crossbeam_queue::ArrayQueue;
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::lock_api::{Mutex, MutexGuard, RawMutex};
 use std::ptr;
 
 type Buf<T> = Vec<T>;
@@ -17,15 +17,13 @@ impl<T> Buffers<T> {
     }
 }
 
-pub struct Buter<T> {
+pub struct Buter<T, R: RawMutex = parking_lot::RawMutex> {
     bufs: Buffers<T>,
-    over: Mutex<Buf<T>>,
+    over: Mutex<R, Buf<T>>,
     queue: ArrayQueue<usize>,
 }
 
 impl<T: Unpin> Buter<T> {
-    const DEFAULT_SIZE: usize = 16;
-
     pub fn new() -> Self {
         Self::with_capacity(Self::DEFAULT_SIZE)
     }
@@ -43,20 +41,24 @@ impl<T: Unpin> Buter<T> {
             queue,
         }
     }
+}
+
+impl<T: Unpin, R: RawMutex> Buter<T, R> {
+    const DEFAULT_SIZE: usize = 16;
 
     unsafe fn leak_buf(&self, place: usize) -> &mut Buf<T> {
         &mut *self.bufs.get_unchecked(place)
     }
 
-    fn safe_leak_buf(&self) -> MutexGuard<'_, Buf<T>> {
+    fn safe_leak_buf(&self) -> MutexGuard<'_, R, Buf<T>> {
         self.over.lock()
     }
 
-    pub fn writer(&self) -> ButterWriter<'_, T> {
+    pub fn writer(&self) -> ButerWriter<'_, T, R> {
         if let Some(place) = self.queue.pop() {
             // SAFETY:
             unsafe {
-                ButterWriter {
+                ButerWriter {
                     buf: BufRef::Free(self.leak_buf(place)),
                     que: Some(QueRef {
                         query: &self.queue,
@@ -65,7 +67,7 @@ impl<T: Unpin> Buter<T> {
                 }
             }
         } else {
-            ButterWriter {
+            ButerWriter {
                 buf: BufRef::Lock(self.safe_leak_buf()),
                 que: None,
             }
@@ -78,12 +80,12 @@ pub struct QueRef<'a> {
     pub(crate) place: usize,
 }
 
-pub enum BufRef<'a, T> {
+pub enum BufRef<'a, T, R: RawMutex> {
     Free(&'a mut Buf<T>),
-    Lock(MutexGuard<'a, Buf<T>>),
+    Lock(MutexGuard<'a, R, Buf<T>>),
 }
 
-impl<'a, T> BufRef<'a, T> {
+impl<'a, T, R: RawMutex> BufRef<'a, T, R> {
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         match self {
             BufRef::Free(buf) => buf.get_mut(index),
@@ -99,21 +101,21 @@ impl<'a, T> BufRef<'a, T> {
     }
 }
 
-pub struct ButterWriter<'a, T> {
-    pub(crate) buf: BufRef<'a, T>,
+pub struct ButerWriter<'a, T, R: RawMutex> {
+    pub(crate) buf: BufRef<'a, T, R>,
     pub(crate) que: Option<QueRef<'a>>,
 }
 
-impl<'a, T: Unpin> IntoIterator for ButterWriter<'a, T> {
+impl<'a, T: Unpin, R: RawMutex> IntoIterator for ButerWriter<'a, T, R> {
     type Item = T;
-    type IntoIter = ButerIter<'a, T>;
+    type IntoIter = ButerIter<'a, T, R>;
 
     fn into_iter(self) -> Self::IntoIter {
         ButerIter::new(self)
     }
 }
 
-impl<'a, T> Extend<T> for ButterWriter<'a, T> {
+impl<'a, T, R: RawMutex> Extend<T> for ButerWriter<'a, T, R> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         match self.buf {
             BufRef::Free(ref mut buf) => {
@@ -126,7 +128,7 @@ impl<'a, T> Extend<T> for ButterWriter<'a, T> {
     }
 }
 
-impl<'a, T> Drop for ButterWriter<'a, T> {
+impl<'a, T, R: RawMutex> Drop for ButerWriter<'a, T, R> {
     fn drop(&mut self) {
         if let Some(QueRef { place, query }) = self.que {
             let _ = query.push(place);
@@ -134,18 +136,18 @@ impl<'a, T> Drop for ButterWriter<'a, T> {
     }
 }
 
-pub struct ButerIter<'a, T> {
-    writer: ButterWriter<'a, T>,
+pub struct ButerIter<'a, T, R: RawMutex> {
+    writer: ButerWriter<'a, T, R>,
     last: usize,
 }
 
-impl<'a, T> ButerIter<'a, T> {
-    pub(crate) fn new(writer: ButterWriter<'a, T>) -> Self {
+impl<'a, T, R: RawMutex> ButerIter<'a, T, R> {
+    pub(crate) fn new(writer: ButerWriter<'a, T, R>) -> Self {
         Self { writer, last: 0 }
     }
 }
 
-impl<'a, T: Unpin> Iterator for ButerIter<'a, T> {
+impl<'a, T: Unpin, R: RawMutex> Iterator for ButerIter<'a, T, R> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -160,7 +162,7 @@ impl<'a, T: Unpin> Iterator for ButerIter<'a, T> {
     }
 }
 
-impl<'a, T> Drop for ButerIter<'a, T> {
+impl<'a, T, R: RawMutex> Drop for ButerIter<'a, T, R> {
     fn drop(&mut self) {
         unsafe { self.writer.buf.set_len(0) }
     }

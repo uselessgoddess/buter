@@ -34,9 +34,9 @@ impl Worker {
 ### Benches
 This is appropriate both with large results and with small ones
 ```rust
-// test buter                  ... bench:    14 ns/iter (+/- 5)
-// test vec_push               ... bench:   212 ns/iter (+/- 130)
-// test vec_push_with_capacity ... bench:    54 ns/iter (+/- 32)
+// buter                   bench:    14 ns/iter (+/- 5)
+// vec_push                bench:   212 ns/iter (+/- 130)
+// vec_push_with_capacity  bench:    54 ns/iter (+/- 32)
 ```
 ```rust
 // buter                   time:   [1.6348 ms 1.6445 ms 1.6549 ms]

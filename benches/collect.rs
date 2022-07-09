@@ -5,7 +5,7 @@ extern crate test;
 
 use buter::Buter;
 use criterion::{criterion_group, criterion_main, Criterion};
-use test::{black_box, Bencher};
+use test::black_box;
 
 const SECRET_N: usize = 1_000_000;
 
