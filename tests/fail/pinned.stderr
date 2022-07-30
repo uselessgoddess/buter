@@ -1,0 +1,44 @@
+error[E0277]: `PhantomPinned` cannot be unpinned
+  --> tests/fail/pinned.rs:11:12
+   |
+11 |     writer.extend(Some(Pinned {
+   |            ^^^^^^ within `Pinned`, the trait `Unpin` is not implemented for `PhantomPinned`
+   |
+   = note: consider using `Box::pin`
+   = help: the trait `Extend<T>` is implemented for `ButerWriter<'a, T, R>`
+note: required because it appears within the type `Pinned`
+  --> tests/fail/pinned.rs:4:8
+   |
+4  | struct Pinned {
+   |        ^^^^^^
+   = note: required because of the requirements on the impl of `Extend<Pinned>` for `ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>`
+
+error[E0277]: `PhantomPinned` cannot be unpinned
+  --> tests/fail/pinned.rs:9:15
+   |
+9  |     let buf = Buter::new();
+   |               ^^^^^^^^^^ within `Pinned`, the trait `Unpin` is not implemented for `PhantomPinned`
+   |
+   = note: consider using `Box::pin`
+note: required because it appears within the type `Pinned`
+  --> tests/fail/pinned.rs:4:8
+   |
+4  | struct Pinned {
+   |        ^^^^^^
+note: required by a bound in `Buter::<T>::new`
+  --> src/buter.rs
+   |
+   | impl<T: Unpin> Buter<T> {
+   |         ^^^^^ required by this bound in `Buter::<T>::new`
+
+error[E0599]: the method `into_iter` exists for struct `ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>`, but its trait bounds were not satisfied
+  --> tests/fail/pinned.rs:14:23
+   |
+14 |     assert_eq!(writer.into_iter().count(), 1);
+   |                       ^^^^^^^^^ method cannot be called on `ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `&ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>: Iterator`
+           which is required by `&ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>: IntoIterator`
+           `&mut ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>: Iterator`
+           which is required by `&mut ButerWriter<'_, Pinned, parking_lot::raw_mutex::RawMutex>: IntoIterator`

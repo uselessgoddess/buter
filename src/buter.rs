@@ -17,13 +17,13 @@ impl<T> Buffers<T> {
     }
 }
 
-pub struct Buter<T, R: RawMutex = parking_lot::RawMutex> {
+pub struct Buter<T: Unpin, R: RawMutex = parking_lot::RawMutex> {
     bufs: Buffers<T>,
     over: Mutex<R, Buf<T>>,
     queue: ArrayQueue<usize>,
 }
 
-impl<T> Buter<T> {
+impl<T: Unpin> Buter<T> {
     pub fn new() -> Self {
         Self::with_capacity(Self::DEFAULT_SIZE)
     }
@@ -43,13 +43,13 @@ impl<T> Buter<T> {
     }
 }
 
-impl<T> Default for Buter<T> {
+impl<T: Unpin> Default for Buter<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T, R: RawMutex> Buter<T, R> {
+impl<T: Unpin, R: RawMutex> Buter<T, R> {
     const DEFAULT_SIZE: usize = 16;
 
     unsafe fn leak_buf(&self, place: usize) -> *mut Buf<T> {
@@ -92,7 +92,7 @@ pub enum BufRef<'a, T, R: RawMutex> {
     Lock(MutexGuard<'a, R, Buf<T>>),
 }
 
-impl<'a, T, R: RawMutex> BufRef<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> BufRef<'a, T, R> {
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         match self {
             BufRef::Free(buf) => buf.get_mut(index),
@@ -108,12 +108,12 @@ impl<'a, T, R: RawMutex> BufRef<'a, T, R> {
     }
 }
 
-pub struct ButerWriter<'a, T, R: RawMutex> {
+pub struct ButerWriter<'a, T: Unpin, R: RawMutex> {
     pub(crate) buf: BufRef<'a, T, R>,
     pub(crate) que: Option<QueRef<'a>>,
 }
 
-impl<'a, T, R: RawMutex> IntoIterator for ButerWriter<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> IntoIterator for ButerWriter<'a, T, R> {
     type Item = T;
     type IntoIter = ButerIter<'a, T, R>;
 
@@ -122,7 +122,7 @@ impl<'a, T, R: RawMutex> IntoIterator for ButerWriter<'a, T, R> {
     }
 }
 
-impl<'a, T, R: RawMutex> Extend<T> for ButerWriter<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> Extend<T> for ButerWriter<'a, T, R> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         match self.buf {
             BufRef::Free(ref mut buf) => {
@@ -135,7 +135,7 @@ impl<'a, T, R: RawMutex> Extend<T> for ButerWriter<'a, T, R> {
     }
 }
 
-impl<'a, T, R: RawMutex> Drop for ButerWriter<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> Drop for ButerWriter<'a, T, R> {
     fn drop(&mut self) {
         if let Some(QueRef { place, query }) = self.que {
             let _ = query.push(place);
@@ -143,33 +143,33 @@ impl<'a, T, R: RawMutex> Drop for ButerWriter<'a, T, R> {
     }
 }
 
-pub struct ButerIter<'a, T, R: RawMutex> {
+pub struct ButerIter<'a, T: Unpin, R: RawMutex> {
     writer: ButerWriter<'a, T, R>,
     last: usize,
 }
 
-impl<'a, T, R: RawMutex> ButerIter<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> ButerIter<'a, T, R> {
     pub(crate) fn new(writer: ButerWriter<'a, T, R>) -> Self {
         Self { writer, last: 0 }
     }
 }
 
-impl<'a, T, R: RawMutex> Iterator for ButerIter<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> Iterator for ButerIter<'a, T, R> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         let cur = self.writer.buf.get_mut(self.last);
 
         self.last += 1;
-        cur.map(|t| unsafe {
-            let new = ptr::read(t);
-            ptr::write_bytes(t, 0, 1);
-            new
-        })
+        // SAFETY: `T: Unpin` and
+        // if `t` is a complex type that owns memory (like `String`)
+        // the `Vec` will still `ptr::write` it after `extend`
+        // but it doesn't work for self-referent types
+        cur.map(|t| unsafe { ptr::read(t) })
     }
 }
 
-impl<'a, T, R: RawMutex> Drop for ButerIter<'a, T, R> {
+impl<'a, T: Unpin, R: RawMutex> Drop for ButerIter<'a, T, R> {
     fn drop(&mut self) {
         unsafe { self.writer.buf.set_len(0) }
     }

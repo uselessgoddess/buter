@@ -31,11 +31,9 @@ fn drop_count() {
 
 #[test]
 fn drop_hard_type() {
-    {
-        let buf = Buter::new();
-        let mut writer = buf.writer();
-        writer.extend_one(String::new());
+    let buf = Buter::new();
+    let mut writer = buf.writer();
+    writer.extend_one(String::new());
 
-        writer.into_iter().for_each(|_| {});
-    }
+    writer.into_iter().for_each(|_| {});
 }
