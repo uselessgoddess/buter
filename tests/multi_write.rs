@@ -1,5 +1,5 @@
 use buter::Buter;
-use std::thread;
+use crossbeam::thread;
 
 #[test]
 fn multi_writers() {
@@ -29,6 +29,7 @@ fn multi_writers() {
 }
 
 #[test]
+#[cfg(not(miri))]
 fn multi_thread_writers() {
     let buf = Buter::with_capacity(1);
 
@@ -37,16 +38,17 @@ fn multi_thread_writers() {
     assert!(free_writer.into_iter().eq(0..10));
 
     thread::scope(|s| {
-        s.spawn(|| {
+        s.spawn(|_| {
             let mut lock_writer = buf.writer();
             lock_writer.extend(0..10);
             assert!(lock_writer.into_iter().eq(0..10));
         });
 
-        s.spawn(|| {
+        s.spawn(|_| {
             let mut lock_writer = buf.writer();
             lock_writer.extend(0..10);
             assert!(lock_writer.into_iter().eq(0..10));
         });
-    });
+    })
+    .unwrap();
 }

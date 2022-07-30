@@ -23,7 +23,7 @@ pub struct Buter<T, R: RawMutex = parking_lot::RawMutex> {
     queue: ArrayQueue<usize>,
 }
 
-impl<T: Unpin> Buter<T> {
+impl<T> Buter<T> {
     pub fn new() -> Self {
         Self::with_capacity(Self::DEFAULT_SIZE)
     }
@@ -43,11 +43,17 @@ impl<T: Unpin> Buter<T> {
     }
 }
 
-impl<T: Unpin, R: RawMutex> Buter<T, R> {
+impl<T> Default for Buter<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T, R: RawMutex> Buter<T, R> {
     const DEFAULT_SIZE: usize = 16;
 
-    unsafe fn leak_buf(&self, place: usize) -> &mut Buf<T> {
-        &mut *self.bufs.get_unchecked(place)
+    unsafe fn leak_buf(&self, place: usize) -> *mut Buf<T> {
+        self.bufs.get_unchecked(place)
     }
 
     fn safe_leak_buf(&self) -> MutexGuard<'_, R, Buf<T>> {
@@ -56,10 +62,11 @@ impl<T: Unpin, R: RawMutex> Buter<T, R> {
 
     pub fn writer(&self) -> ButerWriter<'_, T, R> {
         if let Some(place) = self.queue.pop() {
-            // SAFETY:
+            // SAFETY: place in bufs bound
+            // and access with interior mutability to &mut [T] equivalent to &mut [&mut T]
             unsafe {
                 ButerWriter {
-                    buf: BufRef::Free(self.leak_buf(place)),
+                    buf: BufRef::Free(&mut *self.leak_buf(place)),
                     que: Some(QueRef {
                         query: &self.queue,
                         place,
@@ -106,7 +113,7 @@ pub struct ButerWriter<'a, T, R: RawMutex> {
     pub(crate) que: Option<QueRef<'a>>,
 }
 
-impl<'a, T: Unpin, R: RawMutex> IntoIterator for ButerWriter<'a, T, R> {
+impl<'a, T, R: RawMutex> IntoIterator for ButerWriter<'a, T, R> {
     type Item = T;
     type IntoIter = ButerIter<'a, T, R>;
 
@@ -147,7 +154,7 @@ impl<'a, T, R: RawMutex> ButerIter<'a, T, R> {
     }
 }
 
-impl<'a, T: Unpin, R: RawMutex> Iterator for ButerIter<'a, T, R> {
+impl<'a, T, R: RawMutex> Iterator for ButerIter<'a, T, R> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -55,7 +55,7 @@ fn buter(c: &mut Criterion) {
         }
     }
 
-    let mut helper = Helper(Buter::new());
+    let helper = Helper(Buter::new());
     c.bench_function("buter", |b| b.iter(|| helper.work().for_each(silent_box)));
 }
 
